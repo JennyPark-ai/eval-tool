@@ -110,6 +110,9 @@
   #inputTable .w-role { min-width: 80px; }
   #inputTable .w-proj { min-width: 180px; }
   #inputTable .w-cmt { min-width: 240px; }
+  .del { padding: 4px 9px; color: var(--muted); }
+  .del:hover { color: var(--warn); border-color: var(--warn); }
+  tr.skipped td { opacity: 0.55; }
   input.bad { border-color: var(--warn); background: var(--warn-bg); }
 
   /* 결과 */
@@ -137,7 +140,7 @@
     <div>
       <div class="eyebrow" id="yearLabel">연말 인사 평가</div>
       <h1>부서원 평가 · 100점 총량 환산</h1>
-      <p>팀장 1명과 팀원 7명. 팀장 점수는 팀원 7명의 중간값으로 자동 산정되고, 8명 점수의 합은 정확히 100점으로 환산됩니다.</p>
+      <p>팀원 수는 자유롭게 늘리고 줄일 수 있습니다. 팀장 점수는 팀원들의 중간값으로 자동 산정되고, 팀장을 포함한 전체 점수의 합은 정확히 100점으로 환산됩니다.</p>
     </div>
     <div class="actions">
       <label class="btn" for="fileInput">엑셀 불러오기<input id="fileInput" type="file" accept=".xlsx" hidden></label>
@@ -161,13 +164,13 @@
       </div>
       <div class="field"><label for="leadProj">주요 담당 사업</label><input id="leadProj" type="text"></div>
       <div class="field"><label for="leadCmt">팀 운영 총평 (선택)</label><textarea id="leadCmt" rows="2"></textarea></div>
-      <div class="muted" style="font-size:12px">팀장 점수는 입력하지 않습니다. 팀원 7명 원점수의 중간값이 자동으로 들어갑니다.</div>
+      <div class="muted" style="font-size:12px">팀장 점수는 입력하지 않습니다. 팀원 원점수의 중간값이 자동으로 들어갑니다.</div>
     </div>
 
     <div class="panel">
       <h2>⭐ 승진 추천 기준</h2>
       <div class="row2">
-        <div class="field"><label for="topN">상위 몇 명</label><input id="topN" type="number" min="0" max="7" step="1" value="1"></div>
+        <div class="field"><label for="topN">상위 몇 명</label><input id="topN" type="number" min="0" max="20" step="1" value="1"></div>
         <div class="field"><label for="minRaw">최소 원점수 (100점 만점)</label><input id="minRaw" type="number" min="0" max="100" step="1" value="80"></div>
       </div>
       <label class="check" for="includeLeader"><input id="includeLeader" type="checkbox"> 팀장도 추천 대상에 포함</label>
@@ -179,19 +182,20 @@
 
   <section>
     <div class="sec-head">
-      <h2>팀원 평가 입력</h2>
-      <span class="muted" style="font-size:12px">0.5점 단위로 입력할 수 있습니다. 괄호 안은 영역별 만점입니다.</span>
+      <h2>팀원 평가 입력 <span class="muted num" id="memberCount" style="font-size:14px;font-weight:500"></span></h2>
+      <span class="muted" style="font-size:12px">0.5점 단위로 입력할 수 있습니다. 괄호 안은 영역별 만점입니다. 점수를 하나도 넣지 않은 줄은 계산에서 빠집니다.</span>
     </div>
     <div class="table-scroll">
       <table id="inputTable"><thead></thead><tbody></tbody></table>
     </div>
+    <div><button id="addBtn" type="button">+ 팀원 추가</button></div>
     <div class="warnings" id="warnings"></div>
   </section>
 
   <section>
     <div class="sec-head"><h2>평가 결과</h2><span class="muted" style="font-size:12px">최종 환산 점수 순</span></div>
     <div class="stats">
-      <div class="stat"><span class="lbl">8명 합계</span><b class="num" id="statSum">–</b></div>
+      <div class="stat"><span class="lbl" id="statSumLabel">전체 합계</span><b class="num" id="statSum">–</b></div>
       <div class="stat"><span class="lbl">팀장 점수 (팀원 중간값)</span><b class="num" id="statLeader">–</b></div>
       <div class="stat"><span class="lbl">승진 추천</span><b id="statPromo">–</b></div>
     </div>
@@ -217,7 +221,8 @@ const CRITERIA = [
   { key: "성실·근태", max: 15, desc: "지각·결근, 기본 태도" },
   { key: "적극성",   max: 15, desc: "능동적 태도, 아이디어 제안·실행" },
 ];
-const TEAM_SIZE = 7;
+const DEFAULT_SIZE = 7;   // 처음 빈 표의 팀원 수
+const MAX_MEMBERS = 20;   // 팀원 최대 인원
 const TOTAL = 100;
 const STAR = "⭐";
 const STORE_KEY = "eval-tool-draft-v1";
@@ -237,12 +242,15 @@ const EXAMPLE = {
   ].map(([name, role, proj, s, cmt]) => ({ name, role, proj, cmt, scores: s.slice() })),
 };
 
+function newMember(i) {
+  return { name: `팀원 ${i + 1}`, role: "", proj: "", cmt: "", scores: CRITERIA.map(() => 0) };
+}
+/* 점수를 하나도 입력하지 않은 줄 → 계산에서 제외 */
+const isEmptyRow = (m) => m.scores.every((v) => !Number(v));
 function blankState() {
   return {
     leader: { name: "", role: "팀장", proj: "", cmt: "" },
-    members: Array.from({ length: TEAM_SIZE }, (_, i) => ({
-      name: `팀원 ${i + 1}`, role: "", proj: "", cmt: "", scores: CRITERIA.map(() => 0),
-    })),
+    members: Array.from({ length: DEFAULT_SIZE }, (_, i) => newMember(i)),
     settings: { topN: 1, minRaw: 80, includeLeader: false },
     isExample: false,
   };
@@ -311,11 +319,13 @@ function roundToExactTotal(values, total = TOTAL, decimals = 2) {
 }
 
 function computeResults(state) {
-  const { cleaned, warnings } = cleanScores(state.members);
+  const active = state.members.filter((m) => !isEmptyRow(m));
+  if (!active.length) return { rows: [], warnings: [], leaderRaw: 0, skipped: state.members.length };
+  const { cleaned, warnings } = cleanScores(active);
   const { topN, minRaw, includeLeader } = state.settings;
 
   const rows = cleaned.map((m) => ({ ...m, type: "팀원", raw: m.scores.reduce((a, b) => a + b, 0) }));
-  // 팀장 원점수 = 팀원 7명 원점수의 중간값
+  // 팀장 원점수 = (점수가 입력된) 팀원 원점수의 중간값
   const leaderRaw = median(rows.map((r) => r.raw));
   rows.unshift({ ...state.leader, type: "팀장", raw: leaderRaw, scores: CRITERIA.map(() => null) });
 
@@ -335,7 +345,7 @@ function computeResults(state) {
     const cutoff = cands.map((r) => r.final).sort((a, b) => b - a)[Math.min(topN, cands.length) - 1];
     cands.forEach((r) => { if (r.final >= cutoff - 1e-9) r.star = true; });
   }
-  return { rows, warnings, leaderRaw };
+  return { rows, warnings, leaderRaw, skipped: state.members.length - active.length };
 }
 
 /* ============================================================
@@ -345,7 +355,7 @@ let state;
 function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (s && Array.isArray(s.members) && s.members.length === TEAM_SIZE) return s;
+    if (s && Array.isArray(s.members) && s.members.length >= 1) return s;
   } catch (e) {}
   return exampleState();
 }
@@ -370,7 +380,7 @@ function renderStatic() {
     `<div><span>${esc(c.key)} <span class="muted">· ${esc(c.desc)}</span></span><b class="num">${c.max}</b></div>`).join("");
   $("inputTable").querySelector("thead").innerHTML =
     `<tr><th>이름</th><th>직책</th><th>주요 담당 사업</th>${CRITERIA.map((c) =>
-      `<th class="n">${esc(c.key)} <span class="max">(${c.max})</span></th>`).join("")}<th class="n">원점수</th><th>팀장 총평 / 코멘트</th></tr>`;
+      `<th class="n">${esc(c.key)} <span class="max">(${c.max})</span></th>`).join("")}<th class="n">원점수</th><th>팀장 총평 / 코멘트</th><th></th></tr>`;
 }
 
 /* 입력 표: 불러오기/초기화 때만 다시 그림 (입력 중 커서가 튀지 않도록) */
@@ -381,7 +391,7 @@ function renderInputs() {
   $("exampleNotice").hidden = !state.isExample;
 
   $("inputTable").querySelector("tbody").innerHTML = state.members.map((m, i) => `
-    <tr>
+    <tr id="m${i}-row">
       <td><input class="w-name" type="text" id="m${i}-name" data-i="${i}" data-f="name" value="${esc(m.name)}" aria-label="팀원 ${i + 1} 이름"></td>
       <td><input class="w-role" type="text" id="m${i}-role" data-i="${i}" data-f="role" value="${esc(m.role)}" aria-label="직책"></td>
       <td><input class="w-proj" type="text" id="m${i}-proj" data-i="${i}" data-f="proj" value="${esc(m.proj)}" aria-label="주요 담당 사업"></td>
@@ -389,23 +399,41 @@ function renderInputs() {
         min="0" max="${c.max}" step="0.5" value="${m.scores[j]}" aria-label="${esc(c.key)} (${c.max}점 만점)"></td>`).join("")}
       <td class="n num" id="m${i}-raw"></td>
       <td><textarea class="w-cmt" id="m${i}-cmt" data-i="${i}" data-f="cmt" rows="2" aria-label="팀장 총평">${esc(m.cmt)}</textarea></td>
+      <td><button type="button" class="del" data-del="${i}" aria-label="${esc(m.name)} 삭제" title="이 팀원 삭제">삭제</button></td>
     </tr>`).join("");
+  $("addBtn").disabled = state.members.length >= MAX_MEMBERS;
 }
 
 /* 결과: 입력이 바뀔 때마다 다시 계산 */
 function renderResults() {
-  const { rows, warnings } = computeResults(state);
+  const { rows, warnings, skipped } = computeResults(state);
+  const active = state.members.length - skipped;
+  $("memberCount").textContent = `· ${state.members.length}명` + (skipped ? ` (계산 ${active}명)` : "");
+  $("topN").max = Math.max(active, 1);
 
   // 입력 표의 원점수 칸과 범위 표시
   state.members.forEach((m, i) => {
     const raw = cleanScores([m]).cleaned[0].scores.reduce((a, b) => a + b, 0);
-    $(`m${i}-raw`).textContent = fmt(raw);
+    $(`m${i}-raw`).textContent = isEmptyRow(m) ? "제외" : fmt(raw);
+    $(`m${i}-row`).classList.toggle("skipped", isEmptyRow(m));
     CRITERIA.forEach((c, j) => {
       const v = Number(m.scores[j]);
       $(`m${i}-s${j}`).classList.toggle("bad", !(v >= 0 && v <= c.max));
     });
   });
+  if (skipped) warnings.push(`점수가 비어 있는 ${skipped}명은 계산에서 제외했습니다.`);
   $("warnings").innerHTML = warnings.map((w) => `<div>${esc(w)}</div>`).join("");
+
+  const t = $("resultTable");
+  if (!rows.length) {
+    $("statSumLabel").textContent = "전체 합계";
+    ["statSum", "statLeader", "statPromo"].forEach((id) => ($(id).textContent = "–"));
+    t.querySelector("thead").innerHTML = "";
+    t.querySelector("tfoot").innerHTML = "";
+    t.querySelector("tbody").innerHTML = `<tr><td class="muted">팀원 점수를 입력하면 결과가 여기에 나옵니다.</td></tr>`;
+    return;
+  }
+  $("statSumLabel").textContent = `${rows.length}명 합계 (팀장 포함)`;
 
   const sum = rows.reduce((a, r) => a + r.final, 0);
   const lead = rows.find((r) => r.type === "팀장");
@@ -414,7 +442,6 @@ function renderResults() {
   $("statLeader").textContent = `${lead.final.toFixed(2)}점`;
   $("statPromo").textContent = stars.length ? `${STAR} ${stars.map((r) => r.name || "이름 없음").join(", ")}` : "해당 없음";
 
-  const t = $("resultTable");
   t.querySelector("thead").innerHTML =
     `<tr><th>추천</th><th class="n">순위</th><th>이름</th><th>직책</th><th>구분</th><th>주요 담당 사업</th>${CRITERIA.map((c) =>
       `<th class="n">${esc(c.key)}</th>`).join("")}<th class="n">원점수</th><th class="n">최종 환산</th><th>팀장 총평 / 코멘트</th></tr>`;
@@ -445,6 +472,29 @@ function markEdited() {
    5. 입력 이벤트
    ============================================================ */
 function bindEvents() {
+  // 팀원 삭제 (두 번 눌러 확인)
+  $("inputTable").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-del]");
+    if (!btn) return;
+    if (state.members.length <= 1) { toast("팀원은 최소 1명 있어야 합니다."); return; }
+    if (btn.dataset.armed !== "1") {
+      btn.dataset.armed = "1"; btn.textContent = "정말 삭제";
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ""; btn.textContent = "삭제"; } }, 3000);
+      return;
+    }
+    const i = +btn.dataset.del, name = state.members[i].name;
+    state.members.splice(i, 1);
+    state.settings.topN = Math.min(state.settings.topN, state.members.length);
+    renderInputs(); markEdited(); toast(`${name || "팀원"}을(를) 삭제했습니다.`);
+  });
+  $("addBtn").addEventListener("click", () => {
+    if (state.members.length >= MAX_MEMBERS) return;
+    state.members.push(newMember(state.members.length));
+    renderInputs(); markEdited();
+    const i = state.members.length - 1;
+    $(`m${i}-name`).focus(); $(`m${i}-name`).select();
+  });
+
   $("inputTable").addEventListener("input", (e) => {
     const el = e.target, i = +el.dataset.i;
     if (Number.isNaN(i)) return;
@@ -454,7 +504,7 @@ function bindEvents() {
   });
   [["leadName", "name"], ["leadRole", "role"], ["leadProj", "proj"], ["leadCmt", "cmt"]].forEach(([id, f]) =>
     $(id).addEventListener("input", (e) => { state.leader[f] = e.target.value; markEdited(); }));
-  $("topN").addEventListener("input", (e) => { state.settings.topN = Math.max(0, Math.min(7, parseInt(e.target.value || "0", 10))); saveState(); renderResults(); });
+  $("topN").addEventListener("input", (e) => { state.settings.topN = Math.max(0, Math.min(MAX_MEMBERS, parseInt(e.target.value || "0", 10))); saveState(); renderResults(); });
   $("minRaw").addEventListener("input", (e) => { state.settings.minRaw = Number(e.target.value || 0); saveState(); renderResults(); });
   $("includeLeader").addEventListener("change", (e) => { state.settings.includeLeader = e.target.checked; saveState(); renderResults(); });
 
@@ -482,7 +532,7 @@ function bindEvents() {
    6. 엑셀 저장 / 불러오기 (SheetJS)
    ============================================================ */
 function buildWorkbook() {
-  const { rows } = computeResults(state);
+  const { rows } = computeResults(state);  // 점수가 빈 줄은 결과 시트에서 빠지고, 입력데이터 시트에는 남음
   const wb = XLSX.utils.book_new();
 
   // ① 평가 결과
@@ -545,11 +595,12 @@ function importExcel(e) {
       const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
       const str = (v) => String(v ?? "");
       const lead = data.find((r) => r["구분"] === "팀장");
-      const mems = data.filter((r) => r["구분"] === "팀원").slice(0, TEAM_SIZE);
+      const mems = data.filter((r) => r["구분"] === "팀원").slice(0, MAX_MEMBERS);
       if (!mems.length) throw new Error("팀원 데이터가 없습니다.");
       const next = blankState();
       next.settings = state.settings;
       if (lead) next.leader = { name: str(lead["이름"]), role: str(lead["직책"]), proj: str(lead["주요 담당 사업"]), cmt: str(lead["팀장 총평 / 코멘트"]) };
+      next.members = [];
       mems.forEach((r, i) => {
         next.members[i] = {
           name: str(r["이름"]), role: str(r["직책"]), proj: str(r["주요 담당 사업"]), cmt: str(r["팀장 총평 / 코멘트"]),
