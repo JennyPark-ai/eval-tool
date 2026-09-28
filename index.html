@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>연말 인사 평가</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  /* ── 색상 토큰 (라이트) ── */
+  :root {
+    --bg: #F4F7F5;
+    --surface: #FFFFFF;
+    --surface-2: #EDF2EF;
+    --ink: #17231E;
+    --muted: #5B6B64;
+    --line: #D6DFDA;
+    --accent: #2F5D50;
+    --accent-ink: #FFFFFF;
+    --star-bg: #FFF4CC;
+    --star-line: #E7C65A;
+    --leader-bg: #E8F0EC;
+    --warn: #A2461F;
+    --warn-bg: #FBEDE5;
+    --focus: #3C8A71;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #101613; --surface: #18201C; --surface-2: #1F2924; --ink: #E3ECE7; --muted: #97A8A0;
+      --line: #2E3A34; --accent: #7CC0A7; --accent-ink: #0E1512; --star-bg: #3A3216; --star-line: #8D7430;
+      --leader-bg: #1F2D27; --warn: #F0A07A; --warn-bg: #3A2117; --focus: #7CC0A7;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101613; --surface: #18201C; --surface-2: #1F2924; --ink: #E3ECE7; --muted: #97A8A0;
+    --line: #2E3A34; --accent: #7CC0A7; --accent-ink: #0E1512; --star-bg: #3A3216; --star-line: #8D7430;
+    --leader-bg: #1F2D27; --warn: #F0A07A; --warn-bg: #3A2117; --focus: #7CC0A7;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-size: 14px; line-height: 1.55;
+    padding: 0 16px; padding-block: 28px 64px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: 17px; font-weight: 600; margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .eyebrow { font-size: 12px; letter-spacing: 0.06em; color: var(--accent); font-weight: 600; }
+
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  button, .btn {
+    font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    padding: 8px 14px; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, .btn:focus-within {
+    outline: 2px solid var(--focus); outline-offset: 2px;
+  }
+
+  .notice {
+    background: var(--star-bg); border: 1px solid var(--star-line); border-radius: 8px;
+    padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+  }
+  .warnings { display: grid; gap: 6px; }
+  .warnings div { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 6px 12px; }
+  .toast { font-size: 13px; color: var(--accent); font-weight: 500; }
+  .toast:empty { display: none; }
+
+  section { display: grid; gap: 12px; }
+  .sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
+
+  /* 설정 + 팀장 영역 */
+  .top { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; align-content: start; }
+  .field { display: grid; gap: 4px; }
+  .field label, .lbl { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  input[type="text"], input[type="number"], textarea, select {
+    font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; width: 100%;
+  }
+  textarea { resize: vertical; min-height: 38px; }
+  .check { display: flex; gap: 8px; align-items: center; }
+  .criteria { display: grid; gap: 4px; font-size: 13px; }
+  .criteria div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-block: 3px; }
+
+  /* 표 */
+  .table-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+  th .max { font-weight: 400; }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; }
+  #inputTable input[type="number"] { width: 64px; text-align: right; }
+  #inputTable .w-name { min-width: 96px; }
+  #inputTable .w-role { min-width: 80px; }
+  #inputTable .w-proj { min-width: 180px; }
+  #inputTable .w-cmt { min-width: 240px; }
+  input.bad { border-color: var(--warn); background: var(--warn-bg); }
+
+  /* 결과 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  .stat b { display: block; font-size: 24px; font-weight: 700; }
+  #resultTable tr.star td { background: var(--star-bg); }
+  #resultTable tr.star td:first-child { box-shadow: inset 3px 0 0 var(--star-line); }
+  #resultTable tr.leader td { background: var(--leader-bg); }
+  #resultTable td.score { font-weight: 700; font-size: 15px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.lead { border-color: var(--accent); color: var(--accent); }
+  .cmt { max-width: 38ch; white-space: pre-wrap; color: var(--muted); }
+  tfoot td { font-weight: 700; background: var(--surface-2); }
+
+  .foot { font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+  @media (max-width: 520px) { h1 { font-size: 22px; } .row2 { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow" id="yearLabel">연말 인사 평가</div>
+      <h1>부서원 평가 · 100점 총량 환산</h1>
+      <p>팀장 1명과 팀원 7명. 팀장 점수는 팀원 7명의 중간값으로 자동 산정되고, 8명 점수의 합은 정확히 100점으로 환산됩니다.</p>
+    </div>
+    <div class="actions">
+      <label class="btn" for="fileInput">엑셀 불러오기<input id="fileInput" type="file" accept=".xlsx" hidden></label>
+      <button id="resetBtn" type="button">새로 입력</button>
+      <button id="downloadBtn" type="button" class="primary">엑셀로 저장</button>
+    </div>
+  </header>
+
+  <div class="notice" id="exampleNotice" hidden>
+    <span>지금 보이는 이름과 점수는 <b>예시</b>입니다. ‘새로 입력’을 누르면 비운 상태로 시작합니다.</span>
+    <button id="clearExampleBtn" type="button">예시 지우고 시작</button>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="top">
+    <div class="panel">
+      <h2>팀장 정보</h2>
+      <div class="row2">
+        <div class="field"><label for="leadName">이름</label><input id="leadName" type="text"></div>
+        <div class="field"><label for="leadRole">직책</label><input id="leadRole" type="text"></div>
+      </div>
+      <div class="field"><label for="leadProj">주요 담당 사업</label><input id="leadProj" type="text"></div>
+      <div class="field"><label for="leadCmt">팀 운영 총평 (선택)</label><textarea id="leadCmt" rows="2"></textarea></div>
+      <div class="muted" style="font-size:12px">팀장 점수는 입력하지 않습니다. 팀원 7명 원점수의 중간값이 자동으로 들어갑니다.</div>
+    </div>
+
+    <div class="panel">
+      <h2>⭐ 승진 추천 기준</h2>
+      <div class="row2">
+        <div class="field"><label for="topN">상위 몇 명</label><input id="topN" type="number" min="0" max="7" step="1" value="1"></div>
+        <div class="field"><label for="minRaw">최소 원점수 (100점 만점)</label><input id="minRaw" type="number" min="0" max="100" step="1" value="80"></div>
+      </div>
+      <label class="check" for="includeLeader"><input id="includeLeader" type="checkbox"> 팀장도 추천 대상에 포함</label>
+      <div class="muted" style="font-size:12px">N위와 점수가 같은 사람은 함께 추천됩니다. 최소 원점수에 못 미치면 순위가 높아도 추천하지 않습니다.</div>
+      <div class="lbl">평가 기준 (100점)</div>
+      <div class="criteria" id="criteriaList"></div>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>팀원 평가 입력</h2>
+      <span class="muted" style="font-size:12px">0.5점 단위로 입력할 수 있습니다. 괄호 안은 영역별 만점입니다.</span>
+    </div>
+    <div class="table-scroll">
+      <table id="inputTable"><thead></thead><tbody></tbody></table>
+    </div>
+    <div class="warnings" id="warnings"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>평가 결과</h2><span class="muted" style="font-size:12px">최종 환산 점수 순</span></div>
+    <div class="stats">
+      <div class="stat"><span class="lbl">8명 합계</span><b class="num" id="statSum">–</b></div>
+      <div class="stat"><span class="lbl">팀장 점수 (팀원 중간값)</span><b class="num" id="statLeader">–</b></div>
+      <div class="stat"><span class="lbl">승진 추천</span><b id="statPromo">–</b></div>
+    </div>
+    <div class="table-scroll">
+      <table id="resultTable"><thead></thead><tbody></tbody><tfoot></tfoot></table>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>입력한 내용은 이 브라우저 안에서만 처리되고 저장됩니다. 서버로 전송되지 않으며 다른 사람과 공유되지 않습니다.</span>
+    <span>다른 기기에서 이어서 작업하려면 ‘엑셀로 저장’한 파일을 그 기기에서 ‘엑셀 불러오기’ 하세요.</span>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   1. 평가 기준 / 상수
+   ============================================================ */
+const CRITERIA = [
+  { key: "사업 규모", max: 25, desc: "담당 프로젝트 개수·규모·난도" },
+  { key: "완성도",   max: 25, desc: "지시 이행, 마감 준수, 오류 최소화" },
+  { key: "신규 발굴", max: 20, desc: "신규 사업 제안, 후원사 컨택, 문의 응대" },
+  { key: "성실·근태", max: 15, desc: "지각·결근, 기본 태도" },
+  { key: "적극성",   max: 15, desc: "능동적 태도, 아이디어 제안·실행" },
+];
+const TEAM_SIZE = 7;
+const TOTAL = 100;
+const STAR = "⭐";
+const STORE_KEY = "eval-tool-draft-v1";
+const YEAR = new Date().getFullYear();
+
+/* 예시 데이터 (처음 열었을 때 기능을 보여주기 위한 가상의 값) */
+const EXAMPLE = {
+  leader: { name: "팀장", role: "국장", proj: "부서 총괄", cmt: "" },
+  members: [
+    ["팀원 A", "선임", "탄소 상쇄 사업", [23, 22, 17, 14, 13], "예시 코멘트: 대형 사업을 안정적으로 이끎."],
+    ["팀원 B", "주임", "후원사 관리",   [18, 20, 19, 13, 14], ""],
+    ["팀원 C", "선임", "캠페인 운영",   [20, 17, 12, 14, 11], ""],
+    ["팀원 D", "사원", "교육 프로그램", [15, 19, 13, 15, 12], ""],
+    ["팀원 E", "주임", "홍보·콘텐츠",   [17, 16, 14, 12, 15], ""],
+    ["팀원 F", "사원", "행사 지원",     [12, 15, 10, 13, 9],  ""],
+    ["팀원 G", "선임", "정책 연구",     [21, 21, 11, 14, 10], ""],
+  ].map(([name, role, proj, s, cmt]) => ({ name, role, proj, cmt, scores: s.slice() })),
+};
+
+function blankState() {
+  return {
+    leader: { name: "", role: "팀장", proj: "", cmt: "" },
+    members: Array.from({ length: TEAM_SIZE }, (_, i) => ({
+      name: `팀원 ${i + 1}`, role: "", proj: "", cmt: "", scores: CRITERIA.map(() => 0),
+    })),
+    settings: { topN: 1, minRaw: 80, includeLeader: false },
+    isExample: false,
+  };
+}
+function exampleState() {
+  return { ...structuredClone(EXAMPLE), settings: { topN: 1, minRaw: 80, includeLeader: false }, isExample: true };
+}
+
+/* ============================================================
+   2. 계산 로직 (파이썬 eval_logic.py 와 동일)
+   ============================================================ */
+const median = (arr) => {
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/* 점수를 0~만점으로 제한하고, 벗어난 값은 경고로 모은다 */
+function cleanScores(members) {
+  const warnings = [];
+  const cleaned = members.map((m) => ({
+    ...m,
+    scores: m.scores.map((v, j) => {
+      let x = Number(v);
+      if (!Number.isFinite(x)) x = 0;
+      const mx = CRITERIA[j].max;
+      if (x < 0 || x > mx) {
+        warnings.push(`${m.name || "이름 없음"}의 ‘${CRITERIA[j].key}’ 점수(${x})가 범위(0~${mx})를 벗어나 ${Math.min(Math.max(x, 0), mx)}점으로 계산했습니다.`);
+        x = Math.min(Math.max(x, 0), mx);
+      }
+      return x;
+    }),
+  }));
+  return { cleaned, warnings };
+}
+
+/* 최대 잔여법 + 동점 유지: 소수 둘째 자리에서 합계가 정확히 100.00 이 되도록 배분 */
+function roundToExactTotal(values, total = TOTAL, decimals = 2) {
+  const unit = 10 ** decimals;
+  const target = Math.round(total * unit);
+  const scaled = values.map((v) => v * unit);
+  const floored = scaled.map((s) => Math.floor(s + 1e-9));
+  let shortfall = target - floored.reduce((a, b) => a + b, 0);
+
+  // 원래 값이 같은 사람끼리 묶기 (팀장과 중간값 팀원이 반올림 후에도 같게)
+  const groups = new Map();
+  scaled.forEach((s, i) => {
+    const k = s.toFixed(6);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(i);
+  });
+  const rem = (i) => scaled[i] - Math.floor(scaled[i] + 1e-9);
+  const ordered = [...groups.values()].sort((a, b) => rem(b[0]) - rem(a[0]));
+  for (const g of ordered) {
+    if (shortfall >= g.length) { g.forEach((i) => floored[i]++); shortfall -= g.length; }
+  }
+  // 드물게 남으면: 동점이 아닌 사람 → 아직 못 받은 사람 → 잔여 큰 순
+  if (shortfall > 0) {
+    const size = {}; groups.forEach((g) => g.forEach((i) => (size[i] = g.length)));
+    const got = (i) => floored[i] > Math.floor(scaled[i] + 1e-9);
+    const idx = values.map((_, i) => i).sort((a, b) =>
+      (size[a] > 1) - (size[b] > 1) || got(a) - got(b) || rem(b) - rem(a));
+    idx.slice(0, shortfall).forEach((i) => floored[i]++);
+  }
+  return floored.map((f) => f / unit);
+}
+
+function computeResults(state) {
+  const { cleaned, warnings } = cleanScores(state.members);
+  const { topN, minRaw, includeLeader } = state.settings;
+
+  const rows = cleaned.map((m) => ({ ...m, type: "팀원", raw: m.scores.reduce((a, b) => a + b, 0) }));
+  // 팀장 원점수 = 팀원 7명 원점수의 중간값
+  const leaderRaw = median(rows.map((r) => r.raw));
+  rows.unshift({ ...state.leader, type: "팀장", raw: leaderRaw, scores: CRITERIA.map(() => null) });
+
+  // 100점 총량 환산
+  const rawTotal = rows.reduce((a, r) => a + r.raw, 0);
+  const shares = rawTotal > 0 ? rows.map((r) => (r.raw / rawTotal) * TOTAL) : rows.map(() => TOTAL / rows.length);
+  roundToExactTotal(shares).forEach((v, i) => (rows[i].final = v));
+
+  // 정렬 (동점이면 팀장 먼저) 및 순위 (동점은 같은 순위)
+  rows.sort((a, b) => b.final - a.final || (a.type === "팀장" ? -1 : b.type === "팀장" ? 1 : 0));
+  rows.forEach((r) => (r.rank = 1 + rows.filter((o) => o.final > r.final + 1e-9).length));
+
+  // 승진 추천 ⭐ : 상위 N명 (N위 동점 포함), 최소 원점수 이상
+  const cands = rows.filter((r) => (includeLeader || r.type === "팀원") && r.raw >= minRaw);
+  rows.forEach((r) => (r.star = false));
+  if (topN > 0 && cands.length) {
+    const cutoff = cands.map((r) => r.final).sort((a, b) => b - a)[Math.min(topN, cands.length) - 1];
+    cands.forEach((r) => { if (r.final >= cutoff - 1e-9) r.star = true; });
+  }
+  return { rows, warnings, leaderRaw };
+}
+
+/* ============================================================
+   3. 상태 저장 (이 브라우저에만)
+   ============================================================ */
+let state;
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s && Array.isArray(s.members) && s.members.length === TEAM_SIZE) return s;
+  } catch (e) {}
+  return exampleState();
+}
+let saveTimer;
+function saveState() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }, 300);
+}
+
+/* ============================================================
+   4. 화면 그리기
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v) => (v == null ? "—" : Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+
+function toast(msg) { $("toast").textContent = msg; clearTimeout(toast.t); toast.t = setTimeout(() => ($("toast").textContent = ""), 4000); }
+
+function renderStatic() {
+  $("yearLabel").textContent = `${YEAR}년 연말 인사 평가`;
+  $("criteriaList").innerHTML = CRITERIA.map((c) =>
+    `<div><span>${esc(c.key)} <span class="muted">· ${esc(c.desc)}</span></span><b class="num">${c.max}</b></div>`).join("");
+  $("inputTable").querySelector("thead").innerHTML =
+    `<tr><th>이름</th><th>직책</th><th>주요 담당 사업</th>${CRITERIA.map((c) =>
+      `<th class="n">${esc(c.key)} <span class="max">(${c.max})</span></th>`).join("")}<th class="n">원점수</th><th>팀장 총평 / 코멘트</th></tr>`;
+}
+
+/* 입력 표: 불러오기/초기화 때만 다시 그림 (입력 중 커서가 튀지 않도록) */
+function renderInputs() {
+  const l = state.leader;
+  $("leadName").value = l.name; $("leadRole").value = l.role; $("leadProj").value = l.proj; $("leadCmt").value = l.cmt;
+  $("topN").value = state.settings.topN; $("minRaw").value = state.settings.minRaw; $("includeLeader").checked = state.settings.includeLeader;
+  $("exampleNotice").hidden = !state.isExample;
+
+  $("inputTable").querySelector("tbody").innerHTML = state.members.map((m, i) => `
+    <tr>
+      <td><input class="w-name" type="text" id="m${i}-name" data-i="${i}" data-f="name" value="${esc(m.name)}" aria-label="팀원 ${i + 1} 이름"></td>
+      <td><input class="w-role" type="text" id="m${i}-role" data-i="${i}" data-f="role" value="${esc(m.role)}" aria-label="직책"></td>
+      <td><input class="w-proj" type="text" id="m${i}-proj" data-i="${i}" data-f="proj" value="${esc(m.proj)}" aria-label="주요 담당 사업"></td>
+      ${CRITERIA.map((c, j) => `<td class="n"><input class="num" type="number" id="m${i}-s${j}" data-i="${i}" data-s="${j}"
+        min="0" max="${c.max}" step="0.5" value="${m.scores[j]}" aria-label="${esc(c.key)} (${c.max}점 만점)"></td>`).join("")}
+      <td class="n num" id="m${i}-raw"></td>
+      <td><textarea class="w-cmt" id="m${i}-cmt" data-i="${i}" data-f="cmt" rows="2" aria-label="팀장 총평">${esc(m.cmt)}</textarea></td>
+    </tr>`).join("");
+}
+
+/* 결과: 입력이 바뀔 때마다 다시 계산 */
+function renderResults() {
+  const { rows, warnings } = computeResults(state);
+
+  // 입력 표의 원점수 칸과 범위 표시
+  state.members.forEach((m, i) => {
+    const raw = cleanScores([m]).cleaned[0].scores.reduce((a, b) => a + b, 0);
+    $(`m${i}-raw`).textContent = fmt(raw);
+    CRITERIA.forEach((c, j) => {
+      const v = Number(m.scores[j]);
+      $(`m${i}-s${j}`).classList.toggle("bad", !(v >= 0 && v <= c.max));
+    });
+  });
+  $("warnings").innerHTML = warnings.map((w) => `<div>${esc(w)}</div>`).join("");
+
+  const sum = rows.reduce((a, r) => a + r.final, 0);
+  const lead = rows.find((r) => r.type === "팀장");
+  const stars = rows.filter((r) => r.star);
+  $("statSum").textContent = `${sum.toFixed(2)}점`;
+  $("statLeader").textContent = `${lead.final.toFixed(2)}점`;
+  $("statPromo").textContent = stars.length ? `${STAR} ${stars.map((r) => r.name || "이름 없음").join(", ")}` : "해당 없음";
+
+  const t = $("resultTable");
+  t.querySelector("thead").innerHTML =
+    `<tr><th>추천</th><th class="n">순위</th><th>이름</th><th>직책</th><th>구분</th><th>주요 담당 사업</th>${CRITERIA.map((c) =>
+      `<th class="n">${esc(c.key)}</th>`).join("")}<th class="n">원점수</th><th class="n">최종 환산</th><th>팀장 총평 / 코멘트</th></tr>`;
+  t.querySelector("tbody").innerHTML = rows.map((r) => `
+    <tr class="${r.star ? "star" : r.type === "팀장" ? "leader" : ""}">
+      <td>${r.star ? STAR : ""}</td>
+      <td class="n num">${r.rank}</td>
+      <td><b>${esc(r.name) || '<span class="muted">이름 없음</span>'}</b></td>
+      <td>${esc(r.role)}</td>
+      <td><span class="pill ${r.type === "팀장" ? "lead" : ""}">${r.type}</span></td>
+      <td>${esc(r.proj)}</td>
+      ${r.scores.map((s) => `<td class="n num">${fmt(s)}</td>`).join("")}
+      <td class="n num">${fmt(r.raw)}</td>
+      <td class="n num score">${r.final.toFixed(2)}</td>
+      <td><div class="cmt">${esc(r.cmt)}</div></td>
+    </tr>`).join("");
+  t.querySelector("tfoot").innerHTML =
+    `<tr><td colspan="${6 + CRITERIA.length + 1}" class="n">합계</td><td class="n num">${sum.toFixed(2)}</td><td></td></tr>`;
+}
+
+function markEdited() {
+  if (state.isExample) { state.isExample = false; $("exampleNotice").hidden = true; }
+  saveState();
+  renderResults();
+}
+
+/* ============================================================
+   5. 입력 이벤트
+   ============================================================ */
+function bindEvents() {
+  $("inputTable").addEventListener("input", (e) => {
+    const el = e.target, i = +el.dataset.i;
+    if (Number.isNaN(i)) return;
+    if (el.dataset.s != null) state.members[i].scores[+el.dataset.s] = el.value === "" ? 0 : Number(el.value);
+    else state.members[i][el.dataset.f] = el.value;
+    markEdited();
+  });
+  [["leadName", "name"], ["leadRole", "role"], ["leadProj", "proj"], ["leadCmt", "cmt"]].forEach(([id, f]) =>
+    $(id).addEventListener("input", (e) => { state.leader[f] = e.target.value; markEdited(); }));
+  $("topN").addEventListener("input", (e) => { state.settings.topN = Math.max(0, Math.min(7, parseInt(e.target.value || "0", 10))); saveState(); renderResults(); });
+  $("minRaw").addEventListener("input", (e) => { state.settings.minRaw = Number(e.target.value || 0); saveState(); renderResults(); });
+  $("includeLeader").addEventListener("change", (e) => { state.settings.includeLeader = e.target.checked; saveState(); renderResults(); });
+
+  // 새로 입력: 두 번 눌러 확인 (페이지 안에서 확인)
+  let armed = false;
+  $("resetBtn").addEventListener("click", () => {
+    if (!armed) {
+      armed = true; $("resetBtn").textContent = "한 번 더 누르면 모두 지워집니다";
+      setTimeout(() => { armed = false; $("resetBtn").textContent = "새로 입력"; }, 3500);
+      return;
+    }
+    armed = false; $("resetBtn").textContent = "새로 입력";
+    state = blankState(); saveState(); renderInputs(); renderResults(); toast("입력을 모두 비웠습니다.");
+  });
+  $("clearExampleBtn").addEventListener("click", () => {
+    const settings = state.settings;
+    state = blankState(); state.settings = settings; saveState(); renderInputs(); renderResults(); toast("예시를 지웠습니다. 입력을 시작하세요.");
+  });
+
+  $("downloadBtn").addEventListener("click", downloadExcel);
+  $("fileInput").addEventListener("change", importExcel);
+}
+
+/* ============================================================
+   6. 엑셀 저장 / 불러오기 (SheetJS)
+   ============================================================ */
+function buildWorkbook() {
+  const { rows } = computeResults(state);
+  const wb = XLSX.utils.book_new();
+
+  // ① 평가 결과
+  const head = ["승진 추천", "순위", "이름", "직책", "구분", "주요 담당 사업", ...CRITERIA.map((c) => c.key), "원점수 합계", "최종 환산 점수", "팀장 총평 / 코멘트"];
+  const body = rows.map((r) => [r.star ? STAR : "", r.rank, r.name, r.role, r.type, r.proj,
+    ...r.scores.map((s) => (s == null ? "" : s)), r.raw, r.final, r.cmt]);
+  const sum = +rows.reduce((a, r) => a + r.final, 0).toFixed(2);
+  const foot = [...Array(head.length - 3).fill(""), "합계", sum, ""];
+  const ws1 = XLSX.utils.aoa_to_sheet([head, ...body, foot]);
+  ws1["!cols"] = head.map((h) => ({ wch: h === "팀장 총평 / 코멘트" ? 50 : h === "주요 담당 사업" ? 24 : 12 }));
+  XLSX.utils.book_append_sheet(wb, ws1, "평가 결과");
+
+  // ② 입력데이터 (다시 불러오기용, 파이썬 버전과 같은 형식)
+  const inHead = ["구분", "이름", "직책", "주요 담당 사업", ...CRITERIA.map((c) => c.key), "팀장 총평 / 코멘트"];
+  const l = state.leader;
+  const inRows = [["팀장", l.name, l.role, l.proj, ...CRITERIA.map(() => ""), l.cmt],
+    ...state.members.map((m) => ["팀원", m.name, m.role, m.proj, ...m.scores.map(Number), m.cmt])];
+  const ws2 = XLSX.utils.aoa_to_sheet([inHead, ...inRows]);
+  ws2["!cols"] = inHead.map(() => ({ wch: 14 }));
+  XLSX.utils.book_append_sheet(wb, ws2, "입력데이터");
+
+  // ③ 평가 기준 + 추천 기준
+  const s = state.settings;
+  const ws3 = XLSX.utils.aoa_to_sheet([["영역", "배점", "설명"], ...CRITERIA.map((c) => [c.key, c.max, c.desc]), ["합계", 100, ""],
+    [], ["승진 추천 기준", "", `상위 ${s.topN}명 (동점 포함), 최소 원점수 ${s.minRaw}점, 팀장 ${s.includeLeader ? "포함" : "제외"}`]]);
+  ws3["!cols"] = [{ wch: 16 }, { wch: 8 }, { wch: 60 }];
+  XLSX.utils.book_append_sheet(wb, ws3, "평가 기준");
+  return wb;
+}
+
+let downloads = null;
+async function downloadExcel() {
+  if (typeof XLSX === "undefined") { toast("엑셀 기능을 불러오지 못했습니다. 페이지를 새로고침해 주세요."); return; }
+  const filename = `${YEAR}_연말평가_결과.xlsx`;
+  // Claude 밖(GitHub Pages 등)에서 열면 브라우저 기본 다운로드 사용
+  if (!window.claude) { XLSX.writeFile(buildWorkbook(), filename); toast("엑셀 파일을 저장했습니다."); return; }
+  if (!downloads) { toast("이 화면에서는 파일 저장을 쓸 수 없습니다."); return; }
+  try {
+    const buf = XLSX.write(buildWorkbook(), { bookType: "xlsx", type: "array" });
+    await downloads.save({ filename, data: new Uint8Array(buf) });
+    toast("엑셀 파일을 저장했습니다.");
+  } catch (e) {
+    const code = e && e.code;
+    if (code === "declined") toast("저장을 취소했습니다.");
+    else if (code === "rate_limited") toast("저장 창이 이미 열려 있습니다. 잠시 후 다시 눌러 주세요.");
+    else toast("이 화면에서는 파일 저장을 쓸 수 없습니다.");
+  }
+}
+
+function importExcel(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const wb = XLSX.read(new Uint8Array(reader.result), { type: "array" });
+      const ws = wb.Sheets["입력데이터"];
+      if (!ws) throw new Error("‘입력데이터’ 시트가 없습니다. 이 도구로 저장한 파일인지 확인해 주세요.");
+      const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const str = (v) => String(v ?? "");
+      const lead = data.find((r) => r["구분"] === "팀장");
+      const mems = data.filter((r) => r["구분"] === "팀원").slice(0, TEAM_SIZE);
+      if (!mems.length) throw new Error("팀원 데이터가 없습니다.");
+      const next = blankState();
+      next.settings = state.settings;
+      if (lead) next.leader = { name: str(lead["이름"]), role: str(lead["직책"]), proj: str(lead["주요 담당 사업"]), cmt: str(lead["팀장 총평 / 코멘트"]) };
+      mems.forEach((r, i) => {
+        next.members[i] = {
+          name: str(r["이름"]), role: str(r["직책"]), proj: str(r["주요 담당 사업"]), cmt: str(r["팀장 총평 / 코멘트"]),
+          scores: CRITERIA.map((c) => Number(r[c.key]) || 0),
+        };
+      });
+      state = next; saveState(); renderInputs(); renderResults();
+      toast(`‘${file.name}’을 불러왔습니다.`);
+    } catch (err) {
+      toast(`불러오지 못했습니다: ${err.message}`);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   7. 시작
+   ============================================================ */
+state = loadState();
+renderStatic();
+renderInputs();
+renderResults();
+bindEvents();
+if (window.claude && window.claude.use) {
+  window.claude.use("downloads").then((d) => { downloads = d; if (!d) $("downloadBtn").title = "이 화면에서는 파일 저장을 쓸 수 없습니다."; });
+}
+</script>
+
+</body>
+</html>
